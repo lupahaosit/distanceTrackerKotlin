@@ -1,0 +1,26 @@
+-- Таблица users
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица sessions
+CREATE TABLE sessions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP,
+    distance INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Таблица settings
+CREATE TABLE settings (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    distance_unit TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

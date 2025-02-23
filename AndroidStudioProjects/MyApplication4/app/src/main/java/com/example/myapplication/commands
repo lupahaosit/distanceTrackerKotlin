@@ -24,3 +24,6 @@ CREATE TABLE settings (
     distance_unit TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+
+https://www.figma.com/design/Idw3B32mhAvy9JR6oW5BR9/Untitled?node-id=0-1&p=f&t=88MCL5RdPeqTQPV2-0

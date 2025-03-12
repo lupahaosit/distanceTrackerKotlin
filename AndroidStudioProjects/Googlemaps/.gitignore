@@ -13,3 +13,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.DAT
+*.LOG*
+ntuser.*
+Desktop/
+Documents/
+Downloads/
+.vscode/
+.idea/
+.gradle/

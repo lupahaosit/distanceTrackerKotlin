@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/map"
+        android:name="com.google.android.gms.maps.SupportMapFragment"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginTop="20dp"
+        android:background="@null"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:radius="12dp">
+
+        <!-- Текстовое поле -->
+
+        <!-- Кнопка -->
+
+
+        <TextView
+            android:id="@+id/textView3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@null"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="Преодоленное расстояние: 0м"
+            android:textColor="@color/black"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/startButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/border"
+            android:text="Старт"
+            android:textColor="#0285FF" />
+
+    </LinearLayout>
+
+    <include
+        android:id="@+id/header"
+        layout="@layout/header"
+        />
+
+
+</FrameLayout>

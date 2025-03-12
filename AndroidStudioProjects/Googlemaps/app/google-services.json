@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1029630781138",
+    "project_id": "fir-a312f",
+    "storage_bucket": "fir-a312f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1029630781138:android:c13cc03aa89e035628af0b",
+        "android_client_info": {
+          "package_name": "com.example.googlemaps"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBn0pNSAUjo8HCabLJw9DZkJwUDk6SYXak"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

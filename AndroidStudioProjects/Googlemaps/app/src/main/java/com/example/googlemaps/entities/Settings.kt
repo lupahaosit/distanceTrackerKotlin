@@ -8,8 +8,8 @@ import androidx.room.PrimaryKey
 @Entity(foreignKeys = [
     ForeignKey(
         entity = Users::class,
-        parentColumns = ["id"],
-        childColumns = ["userId"],
+        parentColumns = ["email"],
+        childColumns = ["userEmail"],
         onDelete = ForeignKey.CASCADE
 
     )])
@@ -22,11 +22,11 @@ class Settings {
     var distanceUnit : String? = null
 
     @ColumnInfo(index = true)
-    var userId : Long ?= null
+    var userEmail : String ?= null
 
-    constructor(unit : String, userId : Long){
+    constructor(unit : String, userEmail : String){
         this.distanceUnit = unit
-        this.userId = userId
+        this.userEmail = userEmail
     }
     constructor()
 

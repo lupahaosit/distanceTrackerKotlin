@@ -7,6 +7,10 @@ import android.location.Location
 import android.os.Bundle
 import android.widget.Toast
 import android.Manifest
+import android.content.Context
+import android.media.Image
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Looper
 import android.util.Log
 import android.view.View
@@ -19,7 +23,9 @@ import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.SpinnerAdapter
 import android.widget.TextView
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Text
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -49,6 +55,7 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
@@ -59,11 +66,18 @@ import com.google.maps.android.SphericalUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.forEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Dictionary
+import java.util.HashMap
+import java.util.Locale
 
 class CountryViewModel(application: Application) : AndroidViewModel(application){
 
@@ -200,6 +214,11 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
     private var database = Firebase.database.reference
     private val coroutineScope  = CoroutineScope(Dispatchers.IO)
     private lateinit var session: Session
+    private lateinit var currentLatLng : LatLng
+    private lateinit var polyline : PolylineOptions
+    private lateinit var currentPolyline : Polyline
+    private val polylinePoints = mutableListOf<Polyline>()
+    private var justStarted = true
     companion object {
         private const val LOCATION_PERMISSION_CODE = 1
     }
@@ -236,43 +255,20 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
         sessionsViewModel = ViewModelProvider(this)[SessionsViewModel::class]
         //logOut()
         //setStartValues()
-        getDataOnFirstStart()
-//        var countriesAmount = countryViewModel.getAllCountriesList().count()
-//        if (countriesAmount == 0){
-//            setStartValues()
-//        }
-//            val currentuser = auth.currentUser
-//        if (currentuser!= null){
-//            var z = usersViewModel.repository.getUserByEmail(currentuser!!.email.toString())
-//            applicationUser = z
-//            userSettings = settingsViewModel.repository.getUsersSettings(applicationUser.id)
-//            showApplicationView()
-//            updateFirebaseDb()
-//        }
-//        else{
-//            toLoginPage()
-//        }
-
-    }
-
-    private fun setStartValues(){
-        val mainViewModel = ViewModelProvider(this).get(CountryViewModel::class)
-        val cityViewModel = ViewModelProvider(this).get(CityViewModel::class)
-
-        countries.forEach(){
-            mainViewModel.addData(Country(name = it))
+        var z = cityViewModel.repository.getAllCitiesList().count()
+        if (z == 0){
+            getDataOnFirstStart()
         }
-
-        citiesRussia.forEach(){
-            cityViewModel.addCity(City(name = it, 1L))
+        //logOut()
+        val currentuser = auth.currentUser
+        if (currentuser!= null){
+            var z = usersViewModel.repository.getUserByEmail(currentuser!!.email.toString())
+            applicationUser = z
+            userSettings = settingsViewModel.repository.getUsersSettings(applicationUser.email)
+            showApplicationView()
         }
-
-        citiesUSA.forEach(){
-            cityViewModel.addCity(City(name = it, 2L))
-        }
-
-        emperiumCities.forEach(){
-            cityViewModel.addCity(City(name = it, 3L))
+        else{
+            toLoginPage()
         }
 
     }
@@ -423,6 +419,9 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
                   Log.d("Success LOGIN", "user logging")
                     val user = auth.currentUser
                     applicationUser = usersViewModel.repository.getUserByEmail(email.toString())
+                    var k = settingsViewModel.repository.getAllSettingsList()
+                    var z = settingsViewModel.repository.getUsersSettings(applicationUser.email)
+                    userSettings = z
                     showApplicationView()
                     reloadMapFragment()
             }else{
@@ -451,11 +450,11 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
                             password = password,
                             name = name, cityId = city.id)
                         usersViewModel.repository.addUser(currentUser)
-                        var c = usersViewModel.repository.getAllUsers()
-                        var f = c.count()
-                        applicationUser = usersViewModel.repository.getUserByEmail(currentUser.email!!)
-                        userSettings = Settings(unit = unitOfMeasurement.toString(), userId = applicationUser.id)
+                        applicationUser = currentUser
+                        firebaseUserAdd()
+                        userSettings = Settings(unit = unitOfMeasurement.toString(), userEmail = applicationUser.email!!)
                         settingsViewModel.repository.setUsersSettings(userSettings)
+                        addCurrentSettings()
                         showApplicationView()
                         reloadMapFragment()
                     }
@@ -500,7 +499,7 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
 
         val locationCallback = object : LocationCallback(){
             override fun onLocationResult(p0: LocationResult) {
-                for (location in p0.locations){
+                for (location in p0.locations) {
                     updateLocationOnMap(location)
 
                 }
@@ -518,8 +517,11 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
     private fun updateLocationOnMap(location : Location) {
 
         var  previousPosition : LatLng? = null
-        val currentLatLng = LatLng(location.latitude, location.longitude)
-        map.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18f))
+        currentLatLng = LatLng(location.latitude, location.longitude)
+        if (justStarted){
+            focusCamera()
+            justStarted = false
+        }
         if (currentMarker!= null){
             previousPosition = LatLng(currentMarker?.position!!.latitude, currentMarker?.position!!.longitude)
         }
@@ -528,7 +530,8 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
         if (isProjectStarted) {
 
             previousPosition?.let {
-                map.addPolyline(PolylineOptions().add(previousPosition, currentLatLng))
+                polyline = PolylineOptions().add(previousPosition, currentLatLng)
+                polylinePoints.add( map.addPolyline(polyline))
                 totalDistance += SphericalUtil.computeDistanceBetween(
                     previousPosition,
                     currentLatLng
@@ -552,6 +555,15 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
         val view = findViewById<TextView>(R.id.textView3)
         view.setText("Преодоленное расстояние: 0 ${userSettings.distanceUnit}")
 
+        val focusOnUserButton = findViewById<ImageView>(R.id.locationPicture)
+
+        focusOnUserButton.setOnClickListener(object : OnClickListener{
+            override fun onClick(v: View?) {
+                focusCamera()
+            }
+
+        })
+
     }
 
     private fun ClickOnStartButton() {
@@ -561,16 +573,19 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
             session.endAt = Calendar.getInstance().time
             startButton.text = "Старт"
             sessionsViewModel.repository.addSession(session)
-
-
+            firebaseAddSession()
         }
         else{
             isProjectStarted = true
             startButton.text = "Стоп"
             val view = findViewById<TextView>(R.id.textView3)
             totalDistance = 0.0
-            session = Session(userId = applicationUser.id)
+            session = Session(userEmail = applicationUser.email!!)
             view.text = "Преодоленное расстояние: ${totalDistance.toLong()} ${userSettings.distanceUnit}"
+            if (polylinePoints.count() != 0){
+                polylinePoints.forEach{ it.remove() }
+            }
+
 
         }
     }
@@ -636,6 +651,7 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
         val unitSpinner = findViewById<Spinner>(R.id.unitOfMeasurementSpinner)
         var user = usersViewModel.repository.getUserByEmail(userEmail)
         userSettings.distanceUnit = unitSpinner.selectedItem.toString()
+        addCurrentSettings()
         settingsViewModel.repository.updateUserSettings(userSettings)
         showApplicationView()
         reloadMapFragment()
@@ -646,50 +662,145 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
         toLoginPage()
     }
 
-    private fun updateFirebaseDb(){
-        var counriesToAdd = countryViewModel.getAllCountriesList()
-        var citiestoAdd = runBlocking {
-            coroutineScope.async {
-                cityViewModel.repository.getAllCities().first()
-            }.await()
-        }
-
-        var usersToAdd = usersViewModel.repository.getAllUsers()
-        var settingsToAdd = settingsViewModel.repository.getUsersSettings(applicationUser.id)
-        var sessionsToAdd = sessionsViewModel.repository.getAllSessions()
-
-        counriesToAdd.forEach(){
-            database.child("countries").child(it.id.toString()).setValue(it)
-        }
-
-       citiestoAdd.forEach(){
-           database.child("cities").child(it.id.toString()).setValue(it)
-       }
-
-        usersToAdd.forEach(){
-            database.child("users").child(it.id.toString()).setValue(it)
-        }
-
-        sessionsToAdd.forEach(){
-            database.child("sessions").child(it.userId.toString()).child(it.id.toString()).setValue(it)
-        }
-
-        database.child("setiings").child(settingsToAdd.userId.toString()).setValue(settingsToAdd)
-
-
-
+    private fun firebaseUserAdd(){
+        database.child("users").child(applicationUser.email.split('.')[0]).setValue(applicationUser)
     }
 
-    private fun getDataOnFirstStart(){
-        var tempDatabase = FirebaseDatabase.getInstance()
-        var ref = tempDatabase.getReference("countries")
-        ref.get().addOnSuccessListener { snapshot ->
-            val name = snapshot.child("name").getValue(String::class.java)
-            var id = snapshot.child("id")
-            countryViewModel.addData(Country(name = name!!))
+    private fun addCurrentSettings(){
+        database.child("settings").child(userSettings.userEmail!!.split('.')[0]).setValue(userSettings)
+    }
+
+    private fun firebaseAddSession(){
+        database.child("sessions").child(session.userEmail!!.split('.')[0]).child(session.id.toString()).setValue(session)
+    }
+
+    private fun getDataOnFirstStart() {
+        val tempDatabase = FirebaseDatabase.getInstance()
+
+        // Создаем корутину
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                // Запускаем все асинхронные задачи параллельно
+                fetchCountries(tempDatabase)
+                fetchCities(tempDatabase)
+                fetchUsers(tempDatabase)
+                fetchSessions(tempDatabase)
+                fetchSettings(tempDatabase)
+
+                // Все данные получены, можно продолжать работу
+                Log.d("Data loaded", "All data loaded successfully")
+            } catch (e: Exception) {
+                Log.e("Data loading error", "Error loading data: ${e.message}")
+            }
         }
     }
-}
+
+    private suspend fun fetchCountries(database: FirebaseDatabase) {
+        val countryRef = database.getReference("countries")
+        val snapshot = countryRef.get().await()
+        snapshot.children.map {
+            it.children.map { item ->
+                item.value
+            }
+        }.forEach {
+            val id = it[0] as Long
+            val name = it[1] as String
+            countryViewModel.addData(Country(id = id, name = name))
+        }
+        Log.d("Countries added", "Countries added")
+    }
+
+    private suspend fun fetchCities(database: FirebaseDatabase) {
+        val cityRef = database.getReference("cities")
+        val snapshot = cityRef.get().await()
+        snapshot.children.map {
+            it.children.map { item ->
+                item.value
+            }
+        }.forEach {
+            val id = it[1] as Long
+            val name = it[2].toString()
+            val countryId = it[0] as Long
+            cityViewModel.addCity(City(id = id, name = name, countryId = countryId))
+        }
+        Log.d("Cities added", "Cities added")
+    }
+
+    private suspend fun fetchUsers(database: FirebaseDatabase) {
+        val userRef = database.getReference("users")
+        val snapshot = userRef.get().await()
+        if (snapshot.value != null) {
+            snapshot.children.map {
+                it.children.map {
+                    it.value
+                }
+            }.forEach {
+                val cityId = it[0] as Long
+                val tempMap = it[1] as HashMap<*, *>
+                val createdAt = tempMap["time"] as Long
+                val email = it[2] as String
+                val name = it[3] as String
+                val password = it[4] as String
+                usersViewModel.repository.addUser(Users(email, name, password, cityId, Date(createdAt)))
+            }
+        }
+    }
+
+    private suspend fun fetchSessions(database: FirebaseDatabase) {
+        val sessionRef = database.getReference("sessions")
+        val snapshot = sessionRef.get().await()
+        if (snapshot.value != null) {
+            snapshot.children.map {
+                it.children.map { item ->
+                    item.children.map {
+                        it.value
+                    }
+                }.forEach {
+                    val distance = it[0] as Long
+                    val tempEndAt = it[1] as HashMap<*, *>
+                    val endAt = Date(tempEndAt["time"] as Long)
+                    val tempStartAt = it[3] as HashMap<*, *>
+                    val startAt = Date(tempStartAt["time"] as Long)
+                    val userEmail = it[4] as String
+
+                    sessionsViewModel.repository.addSession(Session(startAt, distance.toInt(), userEmail, endAt))
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchSettings(database: FirebaseDatabase) {
+        val settingsRef = database.getReference("settings")
+        val snapshot = settingsRef.get().await()
+        if (snapshot.value != null) {
+            snapshot.children.map {
+                it.children.map {
+                    it.value
+                }
+            }.forEach {
+                val unit = it[0] as String
+                val id = it[1] as Long
+                val userEmail = it[2] as String
+                settingsViewModel.repository.setUsersSettings(Settings(unit, userEmail))
+            }
+        }
+    }
+
+
+    private fun focusCamera(){
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18f))
+    }
+    }
+    //region internet Check(Ussless at current moment)
+//    private fun checkInterntConnection(context: Context) : Boolean{
+//        var connctionManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+//        val network = connctionManager.activeNetwork ?: return false
+//        val capabilities = connctionManager.getNetworkCapabilities(network) ?: return false
+//        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+//
+//    }
+    // endregion
+
 
 
 

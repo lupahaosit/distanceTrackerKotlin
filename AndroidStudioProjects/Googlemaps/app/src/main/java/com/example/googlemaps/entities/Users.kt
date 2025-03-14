@@ -15,14 +15,9 @@ import java.util.Date
         onDelete = ForeignKey.CASCADE
     )])
 class Users {
-
-    @PrimaryKey(autoGenerate = true)
-
-    var id : Long = 0
-
     var name: String? = null
-
-    var email : String? = null
+    @PrimaryKey
+    var email : String = ""
 
     var password : String? = null
 
@@ -36,6 +31,15 @@ class Users {
         this.name = name
         this.password = password
         this.cityId = cityId
+    }
+
+    constructor(email: String, password : String, name : String, cityId : Long, createdAt: Date){
+        this.email = email
+        this.name = name
+        this.password = password
+        this.cityId = cityId
+        this.createdAt = createdAt
+
     }
     constructor()
 

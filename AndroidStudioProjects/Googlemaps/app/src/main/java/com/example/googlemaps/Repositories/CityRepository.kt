@@ -40,6 +40,15 @@ class CityRepository(private val cityDao : CityDao) {
         }
     }
 
+    fun getAllCitiesList() : List<City>{
+        var result = coroutineScope.async {
+            cityDao.getAllCitiesList().first()
+        }
+        return runBlocking {
+            result.await()
+        }
+    }
+
 
 
 }

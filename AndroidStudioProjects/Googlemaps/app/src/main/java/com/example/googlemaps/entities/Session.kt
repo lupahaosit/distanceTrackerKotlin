@@ -12,8 +12,8 @@ import java.util.Date
 @Entity(tableName = "sessions",
     foreignKeys =  [ForeignKey(
         Users::class,
-        parentColumns = ["id"],
-        childColumns = ["userId"],
+        parentColumns = ["email"],
+        childColumns = ["userEmail"],
         onDelete = ForeignKey.CASCADE
     )])
 class Session {
@@ -27,10 +27,17 @@ class Session {
 
     var distance : Int = 0
     @ColumnInfo(index = true)
-    var userId : Long ?= null
+    var userEmail : String ?= null
     constructor()
-    constructor(userId : Long){
-        this.userId = userId
+
+    constructor(userEmail : String){
+        this.userEmail = userEmail
     }
 
+    constructor(startedAt : Date, distance: Int, userEmail: String, endAt : Date){
+        this.startedAt = startedAt
+        this.distance = distance
+        this.userEmail = userEmail
+        this.endAt = endAt
+    }
 }

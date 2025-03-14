@@ -14,7 +14,7 @@ import androidx.room.PrimaryKey
     )])
 class City() {
 
-    @PrimaryKey(autoGenerate = true)
+    @PrimaryKey
     var id : Long = 0
 
     @ColumnInfo(name = "city_name")
@@ -23,7 +23,8 @@ class City() {
     @ColumnInfo(name = "country_id", index = true)
     var countryId : Long? = null
 
-    constructor(name: String, countryId: Long) : this() { // Вызываем пустой конструктор
+    constructor(id : Long, name: String, countryId: Long) : this() { // Вызываем пустой конструктор
+        this.id = id
         this.name = name
         this.countryId = countryId
     }

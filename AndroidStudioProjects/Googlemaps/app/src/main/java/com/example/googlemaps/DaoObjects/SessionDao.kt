@@ -13,8 +13,8 @@ interface SessionDao {
     @Query("SELECT * FROM sessions")
     fun getAllSessions() : LiveData<List<Session>>
 
-    @Query("SELECT * FROM sessions WHERE userId = :id")
-    fun getUsersSessions(id: Long) : Flow<List<Session>>
+    @Query("SELECT * FROM sessions WHERE userEmail = :email")
+    fun getUsersSessions(email: String) : Flow<List<Session>>
 
     @Insert
     suspend fun addSession(session: Session)

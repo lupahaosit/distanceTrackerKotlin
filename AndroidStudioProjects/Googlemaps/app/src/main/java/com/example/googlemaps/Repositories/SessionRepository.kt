@@ -16,9 +16,9 @@ class SessionRepository (private val sessionDao: SessionDao) {
 
     val sessions = sessionDao.getAllSessions()
 
-    fun getUsersSessions(userId : Long) : List<Session>{
+    fun getUsersSessions(email : String) : List<Session>{
         var result = coroutineScope.async {
-            sessionDao.getUsersSessions(userId).first()
+            sessionDao.getUsersSessions(email).first()
         }
         return runBlocking {
             result.await()

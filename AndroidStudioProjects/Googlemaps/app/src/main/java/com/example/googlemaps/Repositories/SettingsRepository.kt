@@ -16,9 +16,9 @@ class SettingsRepository(private val settingsDao : SettingsDao)  {
     val coroutineScope = CoroutineScope(Dispatchers.IO)
     val settings = settingsDao.getAllSettings()
 
-    fun getUsersSettings(userId : Long) : Settings {
+    fun getUsersSettings(email : String) : Settings {
         var settings = coroutineScope.async {
-            settingsDao.getUsersSettings(userId).first()
+            settingsDao.getUsersSettings(email).first()
         }
 
         return runBlocking {
@@ -37,6 +37,13 @@ class SettingsRepository(private val settingsDao : SettingsDao)  {
         coroutineScope.launch {
             settingsDao.updateSettings(settings)
         }
+    }
+
+    fun getAllSettingsList() : List<Settings>{
+        var result = coroutineScope.async {
+            settingsDao.getAllSettingsList().first()
+        }
+        return runBlocking { result.await() }
     }
 
 

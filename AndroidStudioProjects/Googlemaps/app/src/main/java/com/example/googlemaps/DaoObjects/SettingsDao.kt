@@ -14,12 +14,15 @@ interface SettingsDao {
     @Query("SELECT * FROM settings")
     fun getAllSettings() : LiveData<List<Settings>>
 
-    @Query("SELECT * FROM settings WHERE userId = :id LIMIT 1")
-    fun getUsersSettings(id : Long) : Flow<Settings>
+    @Query("SELECT * FROM settings WHERE userEmail = :email LIMIT 1")
+    fun getUsersSettings(email : String) : Flow<Settings>
 
     @Update
     suspend fun updateSettings(settings: Settings)
 
     @Insert
     suspend fun addSettings(settings: Settings)
+
+    @Query("SELECT * FROM settings")
+    fun getAllSettingsList() : Flow<List<Settings>>
 }

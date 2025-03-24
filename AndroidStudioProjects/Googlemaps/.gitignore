@@ -22,3 +22,12 @@ Downloads/
 .vscode/
 .idea/
 .gradle/
+Application Data/
+Cookies/
+Local Settings/
+NetHood/
+PrintHood/
+Recent/
+SendTo/
+.idea/
+*.log

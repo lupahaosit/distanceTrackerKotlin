@@ -556,7 +556,7 @@ class MainActivity : FragmentActivity(), OnMapReadyCallback {
     private fun updateLocationOnMap(latitude : Double, longitude : Double ) {
 
         var  previousPosition : LatLng? = null
-        currentLatLng = LatLng(latitude + x, longitude)
+        currentLatLng = LatLng(latitude, longitude)
         if (justStarted){
             focusCamera()
             justStarted = false

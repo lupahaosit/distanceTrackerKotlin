@@ -101,29 +101,6 @@ class LocationForegroundService : Service() {
 
     private fun updateLocationOnMap(location: Location) {
 
-//        var previousPosition: LatLng? = null
-//        currentLatLng = LatLng(location.latitude, location.longitude)
-//        if (justStarted) {
-//            focusCamera()
-//            justStarted = false
-//        }
-//        if (currentMarker != null) {
-//            previousPosition =
-//                LatLng(currentMarker?.position!!.latitude, currentMarker?.position!!.longitude)
-//        }
-//        currentMarker?.remove()
-//        currentMarker = map.addMarker(MarkerOptions().position(currentLatLng))
-//        if (isProjectStarted) {
-//
-//            previousPosition?.let {
-//                polyline = PolylineOptions().add(previousPosition, currentLatLng)
-//                polylinePoints.add(map.addPolyline(polyline))
-//                totalDistance += SphericalUtil.computeDistanceBetween(
-//                    previousPosition,
-//                    currentLatLng
-//                )
-//            }
-//        }
         val intent = Intent("UPDATE_LOCATION")
         intent.putExtra("latitude", location.latitude)
         intent.putExtra("longitude", location.longitude)
@@ -134,5 +111,9 @@ class LocationForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
+    }
+
+    public fun stopIt(){
+        stopSelf()
     }
 }

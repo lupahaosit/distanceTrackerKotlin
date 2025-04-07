@@ -462,6 +462,7 @@ class MainActivity : FragmentActivity() {
                     var k = usersViewModel.repository.getAllUsers()
                     var z = settingsViewModel.repository.getUsersSettings(applicationUser.email)
                     userSettings = z
+                    unitOfMeasurement.value = userSettings.distanceUnit!!
                     navController.navigate("home")
                     userSessions.value = sessionsViewModel.repository.getAllSessions().filter { it.userEmail == applicationUser.email }
                     checkPermission()
@@ -539,9 +540,8 @@ class MainActivity : FragmentActivity() {
             previousPosition = LatLng(currentLatLng.latitude , currentLatLng.longitude)
         }
 
-        currentLatLng = LatLng(latitude, longitude)
+        currentLatLng = LatLng(latitude , longitude)
         mutableLatLng.value = currentLatLng
-        x +=0.0001
 
         if (isProjectStarted.value && previousPosition != null) {
             totalDistance.value += SphericalUtil.computeDistanceBetween(
@@ -1112,7 +1112,7 @@ class MainActivity : FragmentActivity() {
                 Text("Итоговая дистанция: ${(totalDistance.value / unitOfDistance).toInt()} ${unitOfMeasurement.value}ов")
                 Text("Время в пути: ${(durationSeconds / 60).toInt()} минут")
                 Text("Средняя скорость: ${averageSpeedKmH.toInt()} км/ч")
-                Text("Потраченные каллории: ${(1.3 / 60 * durationSeconds  * averageSpeedKmH).toInt() }")
+                Text("Потраченные каллории: ${(1.3 / 60 * durationSeconds  * averageSpeedKmH).toInt() } ккал")
                 Button(onClick = {
                     resultCardVisibility.value = false
                 })

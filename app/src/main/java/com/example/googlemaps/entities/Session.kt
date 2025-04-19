@@ -3,8 +3,10 @@ package com.example.googlemaps.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import com.example.googlemaps.entities.Users
+import com.google.android.gms.maps.model.LatLng
 import java.util.Calendar
 import java.util.Date
 
@@ -28,6 +30,9 @@ class Session {
     var distance : Int = 0
     @ColumnInfo(index = true)
     var userEmail : String ?= null
+
+    @Ignore
+    var sessionPoints : List<LatLng> ?= null;
     constructor()
 
     constructor(userEmail : String){

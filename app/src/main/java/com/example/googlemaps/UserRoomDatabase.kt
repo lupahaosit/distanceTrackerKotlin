@@ -18,7 +18,7 @@ import com.example.googlemaps.entities.Users
 
 
 @Database(entities = [(Users::class), City::class,
-Country::class, Session::class, Settings::class], version = 94, exportSchema = false)
+Country::class, Session::class, Settings::class], version = 104, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class UserRoomDatabase: RoomDatabase() {
 

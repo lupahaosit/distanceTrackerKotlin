@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.icu.text.ListFormatter.Width
+import android.icu.text.SimpleDateFormat
 import android.os.Looper
 import android.util.Log
 import android.view.View
@@ -44,6 +45,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -59,9 +61,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -86,6 +90,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.TextLayoutInput
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
@@ -156,7 +161,9 @@ import java.sql.Time
 import java.util.Calendar
 import java.util.Date
 import java.util.HashMap
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 class CountryViewModel(application: Application) : AndroidViewModel(application){
 
@@ -314,6 +321,8 @@ class MainActivity : FragmentActivity() {
     private var unitOfDistance = 0.0;
     private var stackOfViews = ArrayDeque<View>();
     private var firstCameraMove = true;
+    private var lastFiveSteps = DoubleArray(5);
+    private var fiveStepsIndex = 0
 
     private lateinit var navController : NavHostController
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -346,7 +355,7 @@ class MainActivity : FragmentActivity() {
             val latitude = intent?.getDoubleExtra("latitude", 0.0) ?: return
             val longitude = intent.getDoubleExtra("longitude", 0.0)
 
-            val location = LatLng(latitude + x, longitude)
+            val location = LatLng(latitude, longitude)
             if (isProjectStarted.value){
                 mapViewModel.addPoint(location)
             }
@@ -362,6 +371,9 @@ class MainActivity : FragmentActivity() {
     private var userSessions = mutableStateOf(emptyList<Session>())
     private var resultCardVisibility = mutableStateOf(false)
     private var justStarted = mutableStateOf(false)
+    private var totalSeconds = mutableStateOf(0)
+    private var averageSpeed = mutableStateOf(0.0)
+    private var currentSpeed = mutableStateOf(0.0)
     //endregion
 
     //region viewModels
@@ -544,9 +556,21 @@ class MainActivity : FragmentActivity() {
         mutableLatLng.value = currentLatLng
 
         if (isProjectStarted.value && previousPosition != null) {
-            totalDistance.value += SphericalUtil.computeDistanceBetween(
+            var stepSize = SphericalUtil.computeDistanceBetween(
                 previousPosition,
                 currentLatLng)
+            totalDistance.value += stepSize
+            val durationMillis = Calendar.getInstance().timeInMillis - session.startedAt!!.time
+            totalSeconds.value = (durationMillis.toDouble() / 1000).toInt()
+            if (totalSeconds.value != 0){
+                averageSpeed.value = (((totalDistance.value)/(totalSeconds.value) * 3.6 / unitOfDistance * 100).roundToInt() / 100.0)
+                lastFiveSteps[fiveStepsIndex] = stepSize
+                fiveStepsIndex++
+                if (fiveStepsIndex == 4){
+                    currentSpeed.value = (lastFiveSteps.sum()/2.5 * 3.6*100).roundToInt() / 100.0
+                    fiveStepsIndex = 0
+                }
+            }
        }
     }
 
@@ -578,6 +602,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun firebaseAddSession(){
+        session.sessionPoints = mapViewModel.polylinePoints
         database.child("sessions").child(session.userEmail!!.split('.')[0]).child(session.startedAt.toString()).setValue(session)
     }
 
@@ -686,10 +711,9 @@ class MainActivity : FragmentActivity() {
                     val distance = it[0].toString().toInt()
                     val tempEndAt = it[1] as HashMap<*, *>
                     val endAt = Date(tempEndAt["time"] as Long)
-                    val tempStartAt = it[3] as HashMap<*, *>
+                    val tempStartAt = it[4] as HashMap<*, *>
                     val startAt = Date(tempStartAt["time"] as Long)
-                    val userEmail = it[4] as String
-
+                    val userEmail = it[5] as String
                     sessionsViewModel.repository.addSession(
                         Session(
                             startAt,
@@ -702,6 +726,35 @@ class MainActivity : FragmentActivity() {
             }
             }
         }
+    }
+
+    private fun getSessionPoints(endTime : Date){
+        var database =  FirebaseDatabase.getInstance()
+        val sessionRef = database.getReference("sessions")
+        val snapshot = sessionRef.get().addOnSuccessListener { snapshot ->
+            if (snapshot.value != null) {
+                snapshot.children.map {
+                    it.children.map { item ->
+                        item.children.map {
+                            it.value
+                        }
+                    }.forEach {
+                        val tempEndAt = it[1] as HashMap<*, *>
+                        val endAt = Date(tempEndAt["time"] as Long)
+                        val userEmail = it[5] as String
+                        if (applicationUser.email == userEmail && endTime == endAt){
+                            var pointsfromFirebase = it[3] as List<HashMap<*, *>>
+                            val sessionPoints = pointsfromFirebase.map { item ->
+                                LatLng(item["latitude"] as Double, item["longitude"] as Double)
+                            }
+                            mapViewModel.polylinePoints = sessionPoints
+                        }
+                    }
+                }
+            }
+        }
+        navController.navigate("home")
+
     }
 
     private suspend fun fetchSettings(database: FirebaseDatabase) {
@@ -722,16 +775,19 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun startButtonClick(){
+    private fun startButtonClick(showWindow: Boolean){
         if (!isProjectStarted.value) {
             mutableStartButtonText.value = "Стоп"
             isProjectStarted.value = !isProjectStarted.value
             mapViewModel.clearPoints()
             totalDistance.value = 0.0
             session = Session(applicationUser.email)
+            fiveStepsIndex = 0;
 
         }else{
-            resultCardVisibility.value = true
+            if (showWindow){
+                resultCardVisibility.value = true
+            }
             session.endAt = Calendar.getInstance().time
             session.distance = totalDistance.value.toInt()
             userSessions.value += session
@@ -753,22 +809,59 @@ class MainActivity : FragmentActivity() {
         return result
     }
 
+    fun Date.formatTo(pattern: String): String {
+        val dateFormat = SimpleDateFormat(pattern, Locale.getDefault())
+        return dateFormat.format(this)
+    }
+
     //region UI
     @Composable
     private fun historyPageList(){
-        LazyColumn {
-            itemsIndexed(userSessions.value){ index, item ->
-                Text("${index}. ${applicationUser.name} - ${(item.distance / unitOfDistance).toInt()} ${userSettings.distanceUnit}")
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            LazyColumn (
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ){
+                itemsIndexed(userSessions.value) { index, item ->
+
+                    Button(onClick = {
+                        startButtonClick(false)
+                        getSessionPoints(item.endAt!!)
+                                     },
+                        colors = ButtonDefaults.buttonColors(Color.Transparent, contentColor = LocalContentColor.current)) {
+                        Text("${index}. ${applicationUser.name} - ${(item.distance / unitOfDistance).toInt()} ${userSettings.distanceUnit}ов \n" +
+                                "сессия окончена ${item.endAt!!.formatTo("dd.MM.yyyy HH:mm")}",
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            textDecoration = TextDecoration.Underline)
+                    }
+                }
             }
         }
     }
 
     @Composable
-    private fun championsPageList(topList : List<Pair<Users?, Int>>){
-        LazyColumn {
-            itemsIndexed(topList){ index, item ->
-                Text("${index}. ${item.first!!.name} - ${(item.second / unitOfDistance).toInt()} ${userSettings.distanceUnit}")
-
+    private fun championsPageList(topList: List<Pair<Users?, Int>>) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp), // Добавляем отступы по бокам
+            contentAlignment = Alignment.Center
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                itemsIndexed(topList) { index, item ->
+                    Text(
+                        text = "${index + 1}. ${item.first!!.name} - ${(item.second / unitOfDistance).toInt()} ${userSettings.distanceUnit}ов",
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
             }
         }
     }
@@ -783,12 +876,13 @@ class MainActivity : FragmentActivity() {
            Button(onClick = {
                navController.navigate("history")
            }, colors = ButtonDefaults.buttonColors(Color(0xFF757575))) {
-               Text("История", color = Color.Black)
+               Text("История", color = Color.Black, textDecoration = TextDecoration.Underline)
            }
-
+            VerticalDivider(Modifier.height(50.dp), color = Color.Black)
             Button(onClick = ({navController.navigate("home")}) , colors = ButtonDefaults.buttonColors(Color(0xFF757575))){
-                Text("В путь", color = Color.Black)
+                Text("В путь", color = Color.Black, textDecoration = TextDecoration.Underline)
             }
+            VerticalDivider(Modifier.height(50.dp), color = Color.Black)
             Button(onClick = {navController.navigate("champions") }, colors = ButtonDefaults.buttonColors(Color(0xFF757575))) {
                 Image(imageVector = ImageVector.vectorResource(R.drawable.free_icon_trophy_1152912), "trophy",
                 modifier = Modifier
@@ -797,6 +891,7 @@ class MainActivity : FragmentActivity() {
                     .background(Color(0xFF757575)))
 
             }
+            VerticalDivider(Modifier.height(50.dp), color = Color.Black)
             Button(onClick = { navController.navigate("settings") }, colors = ButtonDefaults.buttonColors(Color(0xFF757575))) {
                 Image(ImageVector.vectorResource(R.drawable.gear_alt_svgrepo_com), "settings",
                     modifier = Modifier
@@ -850,6 +945,7 @@ class MainActivity : FragmentActivity() {
 
     @Composable
     private fun googleMap(mapViewModel : MapViewModel){
+
         var cameraPositionState = rememberCameraPositionState()
         var coroutineCamera = rememberCoroutineScope()
         var points = mapViewModel.polylinePoints
@@ -904,13 +1000,25 @@ class MainActivity : FragmentActivity() {
             Text("Преодоленное расстояние: ${(totalDistance.value.toLong() / unitOfDistance).toInt()} ${userSettings.distanceUnit}",
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .offset(0.dp, -115.dp))
+            Text("Время в пути ${totalSeconds.value/60}м : ${totalSeconds.value % 60}с",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(0.dp, -100.dp))
+            Text("Средняя скорость: ${averageSpeed.value} км/ч",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(0.dp, -85.dp))
+            Text("Текущая скорость ${currentSpeed.value} км/ч",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .offset(0.dp, -70.dp))
             Button(modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(0.dp, -20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray, contentColor = Color(0xFF0285FF)),
                 shape = RectangleShape,
-                onClick = {startButtonClick()}) {
+                onClick = {startButtonClick(true)}) {
                 Text(mutableStartButtonText.value)
             }
         }
@@ -937,16 +1045,18 @@ class MainActivity : FragmentActivity() {
                 })
                 Spacer(modifier = Modifier.height(30.dp))
                 Button(
-                    colors = ButtonDefaults.buttonColors(contentColor = Color(0xFF0285FF), containerColor = Color.LightGray),
+                    colors = ButtonDefaults.buttonColors(contentColor = Color(0xFF0285FF), containerColor = Color.Gray),
                     shape = RectangleShape,
-                    onClick = {login()}
+                    onClick = {login()},
+                    modifier = Modifier.width(150.dp)
                 ) {
-                    Text("Войти")
+                    Text("Войти", color = Color.Blue)
                 }
                 Button(
                     colors = ButtonDefaults.buttonColors(contentColor = Color(0xFF0285FF), containerColor = Color.LightGray),
                     shape = RectangleShape,
-                    onClick = {navController.navigate("placeChoose")}
+                    onClick = {navController.navigate("placeChoose")},
+                    modifier = Modifier.width(150.dp)
                 ) {
                     Text("Регистрация")
                 }
@@ -1029,62 +1139,109 @@ class MainActivity : FragmentActivity() {
     }
 
     @Composable
-    private fun registerPage(){
+    private fun registerPage() {
         var expanded by remember { mutableStateOf(false) }
         var selectedItemUnit by remember { mutableStateOf(spinnerElements[0]) }
-         Box(modifier = Modifier.fillMaxSize()){
-             Column(modifier = Modifier.align(Alignment.Center)) {
-                 TextField(email.value,
-                     onValueChange = {email.value = it},
-                     placeholder = { Text("Почта") })
-                 Spacer(modifier = Modifier.height(50.dp))
-                 TextField(password.value,
-                     onValueChange = {password.value = it},
-                     placeholder = {Text("Пароль")},
-                     visualTransformation = PasswordVisualTransformation())
-                 Spacer(modifier = Modifier.height(50.dp))
-                 TextField(name.value,
-                     onValueChange = {name.value = it},
-                     placeholder = {Text("Имя")})
-                 Spacer(modifier = Modifier.height(50.dp))
-                 Row(
-                     modifier = Modifier.clickable {
-                         expanded = !expanded
-                     },
-                 ) {
-                     Text(text = selectedItemUnit)
-                     Icon(imageVector = Icons.Filled.ArrowDropDown, "downList")
-                     DropdownMenu(
-                         expanded = expanded,
-                         onDismissRequest = { expanded = false }
-                     ) {
-                         spinnerElements.forEach { itemSpinner ->
-                             DropdownMenuItem(
-                                 text = { Text(selectedItemUnit) },
-                                 onClick = {
-                                     expanded = false
-                                     selectedItemUnit = itemSpinner
-                                 }
-                             )
-                         }
-                     }
-                 }
-                 Spacer(modifier = Modifier.height(50.dp))
-                 Button(onClick = {
-                     unitOfMeasurement.value = selectedItemUnit
-                     registerUser()
-                 }) {
-                     Text("Зарегестрироваться")
-                 }
-                 Spacer(modifier = Modifier.height(50.dp))
-                 Button(onClick = {navController.navigate("login")}
-                 ){
-                     Text("Войти")
-                 }
-             }
-         }
-    }
 
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                TextField(
+                    value = email.value,
+                    onValueChange = { email.value = it },
+                    placeholder = { Text("Почта") },
+                    modifier = Modifier.width(250.dp) // Добавьте фиксированную ширину или maxWidth
+                )
+
+                Spacer(modifier = Modifier.height(50.dp))
+
+                TextField(
+                    value = password.value,
+                    onValueChange = { password.value = it },
+                    placeholder = { Text("Пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.width(250.dp)
+                )
+
+                Spacer(modifier = Modifier.height(50.dp))
+
+                TextField(
+                    value = name.value,
+                    onValueChange = { name.value = it },
+                    placeholder = { Text("Имя") },
+                    modifier = Modifier.width(250.dp)
+                )
+
+                Spacer(modifier = Modifier.height(50.dp))
+
+                Box(
+                    modifier = Modifier
+                        .width(250.dp)
+                        .wrapContentSize(Alignment.TopStart)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clickable { expanded = !expanded }
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(text = selectedItemUnit)
+                        Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = "downList")
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                        modifier = Modifier.width(250.dp)
+                    ) {
+                        spinnerElements.forEach { itemSpinner ->
+                            DropdownMenuItem(
+                                text = { Text(itemSpinner) },
+                                onClick = {
+                                    expanded = false
+                                    selectedItemUnit = itemSpinner
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(50.dp))
+
+                Button(
+                    colors = ButtonDefaults.buttonColors(
+                        contentColor = Color(0xFF0285FF),
+                        containerColor = Color.Gray
+                    ),
+                    onClick = {
+                        unitOfMeasurement.value = selectedItemUnit
+                        registerUser()
+                    },
+                    modifier = Modifier.width(250.dp)
+                ) {
+                    Text("Зарегистрироваться", color = Color.Blue)
+                }
+
+                Spacer(modifier = Modifier.height(50.dp))
+
+                Button(
+                    colors = ButtonDefaults.buttonColors(
+                        contentColor = Color(0xFF0285FF),
+                        containerColor = Color.LightGray
+                    ),
+                    onClick = { navController.navigate("login") },
+                    modifier = Modifier.width(250.dp)
+                ) {
+                    Text("Войти")
+                }
+            }
+        }
+    }
     @Composable
     private fun elementWithHeader(component : @Composable () -> Unit){
         setUnitOfDistanceValue()
@@ -1110,8 +1267,8 @@ class MainActivity : FragmentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ){
                 Text("Итоговая дистанция: ${(totalDistance.value / unitOfDistance).toInt()} ${unitOfMeasurement.value}ов")
-                Text("Время в пути: ${(durationSeconds / 60).toInt()} минут")
-                Text("Средняя скорость: ${averageSpeedKmH.toInt()} км/ч")
+                Text("Время в пути: ${totalSeconds.value/60}м : ${totalSeconds.value % 60}с")
+                Text("Средняя скорость: ${averageSpeed.value} км/ч")
                 Text("Потраченные каллории: ${(1.3 / 60 * durationSeconds  * averageSpeedKmH).toInt() } ккал")
                 Button(onClick = {
                     resultCardVisibility.value = false
@@ -1122,7 +1279,6 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
-
 
 //endregion
 

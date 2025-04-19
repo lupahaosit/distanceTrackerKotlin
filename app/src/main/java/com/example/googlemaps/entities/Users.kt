@@ -3,7 +3,9 @@ package com.example.googlemaps.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
+import com.google.android.gms.maps.model.LatLng
 import java.util.Calendar
 import java.util.Date
 
@@ -25,6 +27,9 @@ class Users {
 
     @ColumnInfo(index = true)
     var cityId : Long = 1
+
+    @Ignore
+    var usersPointsHistory : List<List<LatLng>>? = null
 
     constructor(email: String, password : String, name : String, cityId : Long){
         this.email = email

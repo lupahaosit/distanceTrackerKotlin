@@ -36,14 +36,31 @@ import com.google.maps.android.SphericalUtil
 class LocationForegroundService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var currentLatLng : LatLng
-    private lateinit var polyline : PolylineOptions
-    private var totalDistance : Double = 0.0
+    private lateinit var locationRequest: LocationRequest
+    private lateinit var currentLatLng: LatLng
+    private lateinit var polyline: PolylineOptions
+    private var totalDistance: Double = 0.0
 
     private var justStarted = true
-    private var currentMarker : Marker? = null
+    private var currentMarker: Marker? = null
     private var isProjectStarted = false
     private val polylinePoints = mutableListOf<Polyline>()
+
+    private lateinit var locationCallback: LocationCallback
+
+    override fun onCreate() {
+        super.onCreate()
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        // Инициализация locationCallback один раз
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                for (location in locationResult.locations) {
+                    updateLocationOnMap(location)
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundService()
@@ -52,55 +69,47 @@ class LocationForegroundService : Service() {
     }
 
     private fun startForegroundService() {
-
         val channelId = "location_channel"
         val channelName = "Location Tracking"
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
                 channelName,
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH // Важно: HIGH
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
-        val notification = NotificationCompat.Builder(this, "location_channel")
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Location Tracking")
             .setContentText("Your location is being tracked")
             .setSmallIcon(R.drawable.free_icon_trophy_1152912)
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // Приоритет уведомления
             .build()
 
         startForeground(1, notification)
     }
 
     private fun startLocationUpdates() {
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 500).build()
+        locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 500)
+            .setMinUpdateIntervalMillis(1000)
+            .setWaitForAccurateLocation(false)
+            .build()
 
-        val locationCallback = object : LocationCallback() {
-            override fun onLocationResult(p0: LocationResult) {
-                for (location in p0.locations) {
-                    updateLocationOnMap(location)
-                }
-            }
-        }
-
-        if (ActivityCompat.checkSelfPermission(
-                this, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper()
             )
+        } else {
+            stopSelf() // Без разрешений нечего ловить
         }
-
     }
 
     private fun updateLocationOnMap(location: Location) {
-
         val intent = Intent("UPDATE_LOCATION")
         intent.putExtra("latitude", location.latitude)
         intent.putExtra("longitude", location.longitude)
@@ -108,12 +117,17 @@ class LocationForegroundService : Service() {
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // Очень важно: остановить обновления локации
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
 
-    public fun stopIt(){
+    fun stopIt() {
         stopSelf()
     }
 }

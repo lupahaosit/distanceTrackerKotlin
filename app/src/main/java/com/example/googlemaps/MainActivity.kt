@@ -12,8 +12,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.icu.text.ListFormatter.Width
 import android.icu.text.SimpleDateFormat
+import android.os.Build
 import android.os.Looper
 import android.util.Log
 import android.view.View
@@ -83,9 +86,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.TextLayoutInput
@@ -131,6 +136,8 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
@@ -264,12 +271,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
 class SessionsViewModel(application: Application) : AndroidViewModel(application) {
     val repository: SessionRepository
-    val settingsList: LiveData<List<Session>>
+    val sessionList: LiveData<List<Session>>
 
     init {
         val sessionDao = UserRoomDatabase.getInstance(application).SessionDao()
         repository = SessionRepository(sessionDao)
-        settingsList = repository.sessions
+        sessionList = repository.sessions
     }
 }
 
@@ -323,7 +330,6 @@ class MainActivity : FragmentActivity() {
     private var firstCameraMove = true;
     private var lastFiveSteps = DoubleArray(5);
     private var fiveStepsIndex = 0
-
     private lateinit var navController : NavHostController
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var applicationUser : Users
@@ -374,6 +380,9 @@ class MainActivity : FragmentActivity() {
     private var totalSeconds = mutableStateOf(0)
     private var averageSpeed = mutableStateOf(0.0)
     private var currentSpeed = mutableStateOf(0.0)
+    private var startMarkerLatLng = mutableStateOf<LatLng>(LatLng(0.0, 0.0))
+    private var endMarkerLatLng = mutableStateOf<LatLng>(LatLng(0.0, 0.0))
+    private var historyWatching = mutableStateOf<Boolean>(false)
     //endregion
 
     //region viewModels
@@ -528,18 +537,32 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun checkPermission(){
-        if(ContextCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED)
-        {
+    private fun checkPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             locationPermissionRequest.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
-        }
-        else{
-            val serviceIntent = Intent(this, LocationForegroundService::class.java)
-            ContextCompat.startForegroundService(this, serviceIntent)
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    locationPermissionRequest.launch(arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    ))
+                } else {
+                    startLocationService()
+                }
+            } else {
+                startLocationService()
+            }
+
         }
     }
+
+    private fun startLocationService() {
+        val serviceIntent = Intent(this, LocationForegroundService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
+    }
+
 
     private fun updateLocationOnMap(latitude : Double, longitude : Double ) {
 
@@ -602,6 +625,9 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun firebaseAddSession(){
+        if (totalDistance.value == 0.0){
+            return;
+        }
         session.sessionPoints = mapViewModel.polylinePoints
         database.child("sessions").child(session.userEmail!!.split('.')[0]).child(session.startedAt.toString()).setValue(session)
     }
@@ -748,6 +774,10 @@ class MainActivity : FragmentActivity() {
                                 LatLng(item["latitude"] as Double, item["longitude"] as Double)
                             }
                             mapViewModel.polylinePoints = sessionPoints
+                            startMarkerLatLng.value = sessionPoints.first()
+                            endMarkerLatLng.value = sessionPoints.last()
+                            historyWatching.value = true
+
                         }
                     }
                 }
@@ -783,6 +813,7 @@ class MainActivity : FragmentActivity() {
             totalDistance.value = 0.0
             session = Session(applicationUser.email)
             fiveStepsIndex = 0;
+            historyWatching.value = false;
 
         }else{
             if (showWindow){
@@ -830,7 +861,10 @@ class MainActivity : FragmentActivity() {
                 itemsIndexed(userSessions.value) { index, item ->
 
                     Button(onClick = {
-                        startButtonClick(false)
+                        if(isProjectStarted.value == true){
+                            startButtonClick(false)
+                        }
+
                         getSessionPoints(item.endAt!!)
                                      },
                         colors = ButtonDefaults.buttonColors(Color.Transparent, contentColor = LocalContentColor.current)) {
@@ -945,10 +979,13 @@ class MainActivity : FragmentActivity() {
 
     @Composable
     private fun googleMap(mapViewModel : MapViewModel){
-
         var cameraPositionState = rememberCameraPositionState()
         var coroutineCamera = rememberCoroutineScope()
         var points = mapViewModel.polylinePoints
+
+        val density = LocalContext.current.resources.displayMetrics.density
+        val widthInPx = (60 * density).toInt()
+        val heightInPx = (60 * density).toInt()
 
         fun centerCamera(){
             coroutineCamera.launch {
@@ -970,7 +1007,33 @@ class MainActivity : FragmentActivity() {
                     cameraPositionState = cameraPositionState
                 ) {
                     Marker(state = MarkerState(mutableLatLng.value))
+                    if (historyWatching.value) {
+                        Marker(
+                            state = MarkerState(startMarkerLatLng.value),
+                            icon  = BitmapDescriptorFactory.fromBitmap(
+                                Bitmap.createScaledBitmap(
+                                    BitmapFactory.decodeResource(
+                                        LocalContext.current.resources,
+                                        R.drawable.start,
+                                    ),
+                                    widthInPx, heightInPx, false
+                                )
 
+                            )
+                        )
+                        Marker(state = MarkerState(endMarkerLatLng.value),
+                            icon = BitmapDescriptorFactory.fromBitmap(
+                                Bitmap.createScaledBitmap(
+                                    BitmapFactory.decodeResource(
+                                        LocalContext.current.resources,
+                                        R.drawable.finish,
+                                    ),
+                                    widthInPx, heightInPx, false
+                                )
+
+                            )
+                        )
+                    }
                     Polyline(points = points,
                             color = Color.Red,
                             width = 8f)

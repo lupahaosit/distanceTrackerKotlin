@@ -46,6 +46,7 @@ dependencies {
     val mapsComposeVersion = "4.4.1"
     implementation ("com.google.android.gms:play-services-maps:18.2.0")
     implementation ("com.google.maps.android:android-maps-utils:3.5.3")
+    implementation ("com.google.android.gms:play-services-location:21.0.1")
     implementation("com.google.maps.android:maps-compose:$mapsComposeVersion")
     implementation("com.google.maps.android:maps-compose-utils:$mapsComposeVersion")
     implementation("com.google.maps.android:maps-compose-widgets:$mapsComposeVersion")

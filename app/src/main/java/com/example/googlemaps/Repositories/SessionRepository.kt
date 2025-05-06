@@ -26,6 +26,9 @@ class SessionRepository (private val sessionDao: SessionDao) {
     }
 
     fun addSession(session : Session){
+        if (session.distance == 0){
+            return;
+        }
         coroutineScope.launch {
             sessionDao.addSession(session)
         }
